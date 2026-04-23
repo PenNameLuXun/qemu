@@ -1,3 +1,9 @@
+config JXL
+    bool
+    default y
+    depends on TCG && AARCH64
+    select PL011
+
 config ARM_VIRT
     bool
     default y
