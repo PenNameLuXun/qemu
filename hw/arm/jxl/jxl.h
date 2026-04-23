@@ -10,6 +10,10 @@
  *              |     FLASH     |  writable pflash image for U-Boot/env
  *   0x05000000 +---------------+
  *              |               |
+ *   0x08000000 +---------------+  GICv3 distributor (64 KiB)
+ *              |   GICD/GICR   |  redistributor window follows
+ *   0x080c0000 +---------------+
+ *              |               |
  *   0x09000000 +---------------+  PL011 UART0 (4 KiB)
  *              |    UART0      |
  *   0x09001000 +---------------+
@@ -30,6 +34,13 @@
 #define JXL_FLASH_BASE   0x04000000
 #define JXL_FLASH_SIZE   (16 * 1024 * 1024)
 #define JXL_FLASH_SECTOR_SIZE 0x10000
+
+#define JXL_GIC_DIST_BASE   0x08000000
+#define JXL_GIC_DIST_SIZE   0x10000
+#define JXL_GIC_REDIST_BASE 0x080a0000
+#define JXL_GIC_REDIST_SIZE 0x20000
+#define JXL_IRQ_UART0       32
+#define JXL_NUM_IRQS        64
 
 #define JXL_UART0_BASE   0x09000000
 #define JXL_UART0_SIZE   0x1000

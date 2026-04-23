@@ -9,17 +9,21 @@
 #include "qemu/error-report.h"
 #include "qemu/units.h"
 #include "hw/boards.h"
+#include "hw/arm/bsa.h"
 #include "hw/block/flash.h"
 #include "hw/qdev-properties.h"
 #include "hw/sysbus.h"
 #include "hw/char/pl011.h"
+#include "hw/intc/arm_gicv3_common.h"
 #include "hw/loader.h"
 #include "hw/arm/boot.h"
 #include "hw/arm/machines-qom.h"
+#include "qobject/qlist.h"
 #include "system/address-spaces.h"
 #include "system/system.h"
 #include "target/arm/cpu-qom.h"
 #include "target/arm/cpu.h"
+#include "target/arm/gtimer.h"
 
 #include "jxl.h"
 
@@ -48,9 +52,68 @@ static void jxl_flash_create(hwaddr base, DriveInfo *dinfo)
     sysbus_mmio_map(SYS_BUS_DEVICE(dev), 0, base);
 }
 
+static DeviceState *jxl_gic_create(MemoryRegion *sysmem, int smp_cpus)
+{
+    DeviceState *gic;
+    SysBusDevice *gicbusdev;
+    QList *redist_region_count;
+    uint32_t redist_capacity;
+    int i;
+
+    gic = qdev_new(gicv3_class_name());
+    qdev_prop_set_uint32(gic, "revision", 3);
+    qdev_prop_set_uint32(gic, "num-cpu", smp_cpus);
+    qdev_prop_set_uint32(gic, "num-irq", JXL_NUM_IRQS + 32);
+    qdev_prop_set_bit(gic, "has-security-extensions", false);
+
+    redist_capacity = JXL_GIC_REDIST_SIZE / GICV3_REDIST_SIZE;
+    redist_region_count = qlist_new();
+    qlist_append_int(redist_region_count, MIN(smp_cpus, redist_capacity));
+    qdev_prop_set_array(gic, "redist-region-count", redist_region_count);
+
+    object_property_set_link(OBJECT(gic), "sysmem", OBJECT(sysmem),
+                             &error_fatal);
+
+    gicbusdev = SYS_BUS_DEVICE(gic);
+    sysbus_realize_and_unref(gicbusdev, &error_fatal);
+    sysbus_mmio_map(gicbusdev, 0, JXL_GIC_DIST_BASE);
+    sysbus_mmio_map(gicbusdev, 1, JXL_GIC_REDIST_BASE);
+
+    for (i = 0; i < smp_cpus; i++) {
+        DeviceState *cpudev = DEVICE(qemu_get_cpu(i));
+        int intidbase = JXL_NUM_IRQS + i * GIC_INTERNAL;
+        int irq;
+        const int timer_irq[] = {
+            [GTIMER_PHYS] = ARCH_TIMER_NS_EL1_IRQ,
+            [GTIMER_VIRT] = ARCH_TIMER_VIRT_IRQ,
+            [GTIMER_HYP] = ARCH_TIMER_NS_EL2_IRQ,
+            [GTIMER_SEC] = ARCH_TIMER_S_EL1_IRQ,
+        };
+
+        for (irq = 0; irq < ARRAY_SIZE(timer_irq); irq++) {
+            qdev_connect_gpio_out(cpudev, irq,
+                                  qdev_get_gpio_in(gic, intidbase + timer_irq[irq]));
+        }
+
+        qdev_connect_gpio_out_named(cpudev, "gicv3-maintenance-interrupt", 0,
+                                    qdev_get_gpio_in(gic, intidbase + ARCH_GIC_MAINT_IRQ));
+
+        sysbus_connect_irq(gicbusdev, i, qdev_get_gpio_in(cpudev, ARM_CPU_IRQ));
+        sysbus_connect_irq(gicbusdev, i + smp_cpus,
+                           qdev_get_gpio_in(cpudev, ARM_CPU_FIQ));
+        sysbus_connect_irq(gicbusdev, i + 2 * smp_cpus,
+                           qdev_get_gpio_in(cpudev, ARM_CPU_VIRQ));
+        sysbus_connect_irq(gicbusdev, i + 3 * smp_cpus,
+                           qdev_get_gpio_in(cpudev, ARM_CPU_VFIQ));
+    }
+
+    return gic;
+}
+
 static void jxl_init(MachineState *machine)
 {
     ARMCPU *cpu;
+    DeviceState *gic;
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *sram = g_new(MemoryRegion, 1);
     DriveInfo *dinfo;
@@ -77,8 +140,11 @@ static void jxl_init(MachineState *machine)
     /* DRAM */
     memory_region_add_subregion(sysmem, JXL_DRAM_BASE, machine->ram);
 
-    /* Polled PL011 UART0 */
-    pl011_create(JXL_UART0_BASE, NULL, serial_hd(0));
+    gic = jxl_gic_create(sysmem, machine->smp.cpus);
+
+    /* PL011 UART0 on SPI 32 */
+    pl011_create(JXL_UART0_BASE, qdev_get_gpio_in(gic, JXL_IRQ_UART0),
+                 serial_hd(0));
 
     /*
      * Two boot modes:
