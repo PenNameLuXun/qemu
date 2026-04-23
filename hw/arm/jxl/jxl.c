@@ -18,6 +18,7 @@
 #include "hw/loader.h"
 #include "hw/arm/boot.h"
 #include "hw/arm/machines-qom.h"
+#include "hw/sd/sd.h"
 #include "qobject/qlist.h"
 #include "system/address-spaces.h"
 #include "system/system.h"
@@ -113,6 +114,7 @@ static DeviceState *jxl_gic_create(MemoryRegion *sysmem, int smp_cpus)
 static void jxl_init(MachineState *machine)
 {
     ARMCPU *cpu;
+    DeviceState *mmci;
     DeviceState *gic;
     MemoryRegion *sysmem = get_system_memory();
     MemoryRegion *sram = g_new(MemoryRegion, 1);
@@ -141,6 +143,20 @@ static void jxl_init(MachineState *machine)
     memory_region_add_subregion(sysmem, JXL_DRAM_BASE, machine->ram);
 
     gic = jxl_gic_create(sysmem, machine->smp.cpus);
+
+    mmci = sysbus_create_varargs("pl181", JXL_MMCI_BASE,
+                                 qdev_get_gpio_in(gic, JXL_IRQ_MMCI_CMD),
+                                 qdev_get_gpio_in(gic, JXL_IRQ_MMCI_DATA),
+                                 NULL);
+    dinfo = drive_get(IF_SD, 0, 0);
+    if (dinfo) {
+        DeviceState *card = qdev_new(TYPE_SD_CARD);
+
+        qdev_prop_set_drive_err(card, "drive", blk_by_legacy_dinfo(dinfo),
+                                &error_fatal);
+        qdev_realize_and_unref(card, qdev_get_child_bus(mmci, "sd-bus"),
+                               &error_fatal);
+    }
 
     /* PL011 UART0 on SPI 32 */
     pl011_create(JXL_UART0_BASE, qdev_get_gpio_in(gic, JXL_IRQ_UART0),

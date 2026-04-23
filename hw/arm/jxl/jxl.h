@@ -14,6 +14,10 @@
  *              |   GICD/GICR   |  redistributor window follows
  *   0x080c0000 +---------------+
  *              |               |
+ *   0x0a000000 +---------------+  PL181 MMCI (4 KiB)
+ *              |     MMCI      |
+ *   0x0a001000 +---------------+
+ *              |               |
  *   0x09000000 +---------------+  PL011 UART0 (4 KiB)
  *              |    UART0      |
  *   0x09001000 +---------------+
@@ -40,7 +44,12 @@
 #define JXL_GIC_REDIST_BASE 0x080a0000
 #define JXL_GIC_REDIST_SIZE 0x20000
 #define JXL_IRQ_UART0       32
+#define JXL_IRQ_MMCI_CMD    33
+#define JXL_IRQ_MMCI_DATA   34
 #define JXL_NUM_IRQS        64
+
+#define JXL_MMCI_BASE    0x0a000000
+#define JXL_MMCI_SIZE    0x1000
 
 #define JXL_UART0_BASE   0x09000000
 #define JXL_UART0_SIZE   0x1000
