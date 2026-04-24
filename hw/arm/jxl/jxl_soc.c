@@ -34,7 +34,7 @@ const JXLSocIpInfo jxl_soc_ip_info[JXL_SOC_IP_COUNT] = {
     },
     [JXL_SOC_IP_GIC_REDIST] = {
         .base_addr = 0x080a0000,
-        .size = 0x20000,
+        .size = 0x80000,
         .name = "gic-redist",
     },
     [JXL_SOC_IP_UART0] = {
@@ -87,6 +87,11 @@ static void jxl_soc_realize(DeviceState *dev, Error **errp)
                                  false, &error_abort);
         object_property_set_bool(OBJECT(&soc->cpu[i]), "has_el2",
                                  false, &error_abort);
+        if (i > 0) {
+            object_property_set_bool(OBJECT(&soc->cpu[i]),
+                                     "start-powered-off", true,
+                                     &error_abort);
+        }
         if (!qdev_realize(DEVICE(&soc->cpu[i]), NULL, errp)) {
             return;
         }

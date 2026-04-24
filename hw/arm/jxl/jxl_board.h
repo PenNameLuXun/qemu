@@ -25,7 +25,7 @@
 typedef struct JXLSocState JXLSocState;
 
 #define JXL_MAX_CPUS     4
-#define JXL_DEFAULT_CPUS 1
+#define JXL_DEFAULT_CPUS 4
 
 #define JXL_FLASH_BASE   0x04000000
 #define JXL_FLASH_SIZE   (16 * 1024 * 1024)

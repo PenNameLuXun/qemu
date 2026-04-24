@@ -152,7 +152,7 @@ static void jxl_init(MachineState *machine)
     jxl_binfo.loader_start = JXL_SRAM_BASE;
     jxl_binfo.firmware_loaded = true;
     jxl_binfo.board_id = -1;
-    jxl_binfo.psci_conduit = QEMU_PSCI_CONDUIT_DISABLED;
+    jxl_binfo.psci_conduit = QEMU_PSCI_CONDUIT_SMC;
     arm_load_kernel(boot_cpu, machine, &jxl_binfo);
 }
 
