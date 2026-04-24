@@ -9,10 +9,9 @@
 
 #include "qemu/osdep.h"
 #include "system/blockdev.h"
-#include "hw/sysbus.h"
+#include "hw/sd/pl181.h"
 #include "migration/vmstate.h"
 #include "hw/irq.h"
-#include "hw/sd/sd.h"
 #include "qemu/log.h"
 #include "qemu/module.h"
 #include "qemu/error-report.h"
@@ -20,44 +19,7 @@
 #include "trace.h"
 #include "qom/object.h"
 
-#define PL181_FIFO_LEN 16
-
-#define TYPE_PL181 "pl181"
-OBJECT_DECLARE_SIMPLE_TYPE(PL181State, PL181)
-
 #define TYPE_PL181_BUS "pl181-bus"
-
-struct PL181State {
-    SysBusDevice parent_obj;
-
-    MemoryRegion iomem;
-    SDBus sdbus;
-    uint32_t clock;
-    uint32_t power;
-    uint32_t cmdarg;
-    uint32_t cmd;
-    uint32_t datatimer;
-    uint32_t datalength;
-    uint32_t respcmd;
-    uint32_t response[4];
-    uint32_t datactrl;
-    uint32_t datacnt;
-    uint32_t status;
-    uint32_t mask[2];
-    int32_t fifo_pos;
-    int32_t fifo_len;
-    /* The linux 2.6.21 driver is buggy, and misbehaves if new data arrives
-       while it is reading the FIFO.  We hack around this by deferring
-       subsequent transfers until after the driver polls the status word.
-       http://www.arm.linux.org.uk/developer/patches/viewpatch.php?id=4446/1
-     */
-    int32_t linux_hack;
-    uint32_t fifo[PL181_FIFO_LEN]; /* TODO use Fifo32 */
-    qemu_irq irq[2];
-    /* GPIO outputs for 'card is readonly' and 'card inserted' */
-    qemu_irq card_readonly;
-    qemu_irq card_inserted;
-};
 
 static const VMStateDescription vmstate_pl181 = {
     .name = "pl181",
