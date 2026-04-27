@@ -21,6 +21,10 @@
  *   0x0a000000 +---------------+  PL181 MMCI (4 KiB)
  *              |     MMCI      |
  *   0x0a001000 +---------------+
+ *              |               |
+ *   0x0a010000 +---------------+  CPU power controller (4 KiB)
+ *              |   CPU_PWR     |  EL3 firmware wakes powered-off CPUs here
+ *   0x0a011000 +---------------+
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -54,6 +58,7 @@ typedef enum JXLSocIpIndex {
     JXL_SOC_IP_GIC_REDIST,
     JXL_SOC_IP_UART0,
     JXL_SOC_IP_MMCI,
+    JXL_SOC_IP_CPU_PWRCTL,
     JXL_SOC_IP_COUNT,
 } JXLSocIpIndex;
 
@@ -68,8 +73,11 @@ extern const JXLSocIpInfo jxl_soc_ip_info[JXL_SOC_IP_COUNT];
 struct JXLSocState {
     DeviceState parent_obj;
 
+    bool has_el2;
+    bool has_el3;
     ARMCPU cpu[JXL_MAX_CPUS];
     MemoryRegion sram;
+    MemoryRegion cpu_pwrctl;
     GICv3State gic;
     PL181State mmci;
     PL011State uart0;
@@ -85,5 +93,7 @@ struct JXLSocState {
 #define JXL_UART0_SIZE      (jxl_soc_ip_info[JXL_SOC_IP_UART0].size)
 #define JXL_MMCI_BASE       (jxl_soc_ip_info[JXL_SOC_IP_MMCI].base_addr)
 #define JXL_MMCI_SIZE       (jxl_soc_ip_info[JXL_SOC_IP_MMCI].size)
+#define JXL_CPU_PWRCTL_BASE (jxl_soc_ip_info[JXL_SOC_IP_CPU_PWRCTL].base_addr)
+#define JXL_CPU_PWRCTL_SIZE (jxl_soc_ip_info[JXL_SOC_IP_CPU_PWRCTL].size)
 
 #endif /* HW_ARM_JXL_SOC_H */

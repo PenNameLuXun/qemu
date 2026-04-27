@@ -93,8 +93,11 @@ static void jxl_init(MachineState *machine)
     JXLState jxl = { 0 };
     ARMCPU *boot_cpu;
     MemoryRegion *sysmem = get_system_memory();
+    bool use_firmware = !!machine->firmware;
 
     jxl.soc = JXL_SOC(object_new(TYPE_JXL_SOC));
+    jxl.soc->has_el2 = true;
+    jxl.soc->has_el3 = use_firmware;
 
     jxl_create_memory(&jxl, machine, sysmem);
     qdev_realize(DEVICE(jxl.soc), NULL, &error_abort);
@@ -154,6 +157,7 @@ static void jxl_init(MachineState *machine)
     jxl_binfo.board_id = -1;
     jxl_binfo.psci_conduit = QEMU_PSCI_CONDUIT_SMC;
     arm_load_kernel(boot_cpu, machine, &jxl_binfo);
+
 }
 
 static void jxl_machine_init(MachineClass *mc)

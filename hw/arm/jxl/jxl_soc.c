@@ -14,12 +14,52 @@
 #include "hw/char/pl011.h"
 #include "hw/intc/arm_gicv3_common.h"
 #include "qobject/qlist.h"
+#include "qemu/log.h"
 #include "system/address-spaces.h"
 #include "system/system.h"
+#include "target/arm/arm-powerctl.h"
 #include "target/arm/cpu-qom.h"
 #include "target/arm/gtimer.h"
 
 #include "jxl_soc.h"
+
+#define JXL_ATF_BL31_WARM_ENTRY 0xbff90184ULL
+
+static uint64_t jxl_cpu_pwrctl_read(void *opaque, hwaddr offset,
+                                    unsigned size)
+{
+    return 0;
+}
+
+static void jxl_cpu_pwrctl_write(void *opaque, hwaddr offset,
+                                 uint64_t value, unsigned size)
+{
+    int ret;
+
+    if (offset != 0) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "jxl-cpu-pwrctl: invalid write offset 0x%" HWADDR_PRIx
+                      "\n", offset);
+        return;
+    }
+
+    ret = arm_set_cpu_on(value, JXL_ATF_BL31_WARM_ENTRY, 0, 3, true);
+    if (ret != QEMU_ARM_POWERCTL_RET_SUCCESS) {
+        qemu_log_mask(LOG_GUEST_ERROR,
+                      "jxl-cpu-pwrctl: failed to power on CPU 0x%" PRIx64
+                      " (ret=%d)\n", value, ret);
+    }
+}
+
+static const MemoryRegionOps jxl_cpu_pwrctl_ops = {
+    .read = jxl_cpu_pwrctl_read,
+    .write = jxl_cpu_pwrctl_write,
+    .endianness = DEVICE_NATIVE_ENDIAN,
+    .valid = {
+        .min_access_size = 4,
+        .max_access_size = 8,
+    },
+};
 
 const JXLSocIpInfo jxl_soc_ip_info[JXL_SOC_IP_COUNT] = {
     [JXL_SOC_IP_SRAM] = {
@@ -47,6 +87,11 @@ const JXLSocIpInfo jxl_soc_ip_info[JXL_SOC_IP_COUNT] = {
         .size = 0x1000,
         .name = "mmci",
     },
+    [JXL_SOC_IP_CPU_PWRCTL] = {
+        .base_addr = 0x0a010000,
+        .size = 0x1000,
+        .name = "cpu-pwrctl",
+    },
 };
 
 static void jxl_soc_init(Object *obj)
@@ -64,6 +109,14 @@ static void jxl_soc_init(Object *obj)
     object_initialize_child(obj, "gic", &soc->gic, TYPE_ARM_GICV3);
     object_initialize_child(obj, "mmci", &soc->mmci, TYPE_PL181);
     object_initialize_child(obj, "uart0", &soc->uart0, TYPE_PL011);
+
+    /*
+     * Default to a non-secure EL2-capable machine so Linux/Xen can use
+     * virtualization. Board code may enable EL3 before realize when a secure
+     * firmware chain (e.g. SPL -> BL31) is requested.
+     */
+    soc->has_el2 = true;
+    soc->has_el3 = false;
 }
 
 static void jxl_soc_realize(DeviceState *dev, Error **errp)
@@ -84,9 +137,9 @@ static void jxl_soc_realize(DeviceState *dev, Error **errp)
 
     for (i = 0; i < machine->smp.cpus; i++) {
         object_property_set_bool(OBJECT(&soc->cpu[i]), "has_el3",
-                                 false, &error_abort);
+                                 soc->has_el3, &error_abort);
         object_property_set_bool(OBJECT(&soc->cpu[i]), "has_el2",
-                                 false, &error_abort);
+                                 soc->has_el2, &error_abort);
         if (i > 0) {
             object_property_set_bool(OBJECT(&soc->cpu[i]),
                                      "start-powered-off", true,
@@ -105,10 +158,18 @@ static void jxl_soc_realize(DeviceState *dev, Error **errp)
     memory_region_add_subregion(sysmem, jxl_soc_ip_info[JXL_SOC_IP_SRAM].base_addr,
                                 &soc->sram);
 
+    memory_region_init_io(&soc->cpu_pwrctl, OBJECT(dev), &jxl_cpu_pwrctl_ops,
+                          soc, "jxl.cpu-pwrctl",
+                          jxl_soc_ip_info[JXL_SOC_IP_CPU_PWRCTL].size);
+    memory_region_add_subregion(sysmem,
+                                jxl_soc_ip_info[JXL_SOC_IP_CPU_PWRCTL].base_addr,
+                                &soc->cpu_pwrctl);
+
     qdev_prop_set_uint32(DEVICE(&soc->gic), "revision", 3);
     qdev_prop_set_uint32(DEVICE(&soc->gic), "num-cpu", machine->smp.cpus);
     qdev_prop_set_uint32(DEVICE(&soc->gic), "num-irq", JXL_SOC_NUM_IRQS + 32);
-    qdev_prop_set_bit(DEVICE(&soc->gic), "has-security-extensions", false);
+    qdev_prop_set_bit(DEVICE(&soc->gic), "has-security-extensions",
+                      soc->has_el3);
 
     redist_capacity = jxl_soc_ip_info[JXL_SOC_IP_GIC_REDIST].size /
                       GICV3_REDIST_SIZE;

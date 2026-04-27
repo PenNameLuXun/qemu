@@ -6,7 +6,7 @@
  *              |     FLASH     |  writable pflash image for U-Boot/env
  *   0x05000000 +---------------+
  *              |               |
- *   0x40000000 +---------------+  DRAM (configurable via -m, default 128 MiB)
+ *   0x40000000 +---------------+  DRAM (configurable via -m, default 2 GiB)
  *              |     DRAM      |
  *              +---------------+
  *
@@ -32,7 +32,7 @@ typedef struct JXLSocState JXLSocState;
 #define JXL_FLASH_SECTOR_SIZE 0x10000
 
 #define JXL_DRAM_BASE    0x40000000
-#define JXL_DRAM_DEFAULT (128 * 1024 * 1024)
+#define JXL_DRAM_DEFAULT (2ULL * 1024 * 1024 * 1024)
 
 typedef struct JXLState {
     JXLSocState *soc;

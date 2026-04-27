@@ -93,7 +93,6 @@ int arm_set_cpu_on(uint64_t cpuid, uint64_t entry, uint64_t context_id,
     trace_arm_powerctl_set_cpu_on(cpuid, target_el,
                                   target_aa64 ? "aarch64" : "aarch32",
                                   entry, context_id);
-
     /* requested EL level need to be in the 1 to 3 range */
     assert((target_el > 0) && (target_el < 4));
 
