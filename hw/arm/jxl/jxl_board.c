@@ -93,11 +93,18 @@ static void jxl_init(MachineState *machine)
     JXLState jxl = { 0 };
     ARMCPU *boot_cpu;
     MemoryRegion *sysmem = get_system_memory();
-    bool use_firmware = !!machine->firmware;
+    JXLMachineState *jms = JXL_MACHINE(machine);
 
     jxl.soc = JXL_SOC(object_new(TYPE_JXL_SOC));
     jxl.soc->has_el2 = true;
-    jxl.soc->has_el3 = use_firmware;
+    /*
+     * EL3 follows the explicit `secure` machine option, not whether `-bios`
+     * was passed. SPL-only chains (e.g. jxl-linux-spl) use `-bios` to load
+     * U-Boot SPL but never install an EL3 SMC handler, so leaving has_el3
+     * tied to firmware-presence breaks PSCI for them. Only the BL31-bearing
+     * chains opt in via `-machine jxl,secure=on`.
+     */
+    jxl.soc->has_el3 = jms->secure;
 
     jxl_create_memory(&jxl, machine, sysmem);
     qdev_realize(DEVICE(jxl.soc), NULL, &error_abort);
@@ -160,13 +167,24 @@ static void jxl_init(MachineState *machine)
 
 }
 
-static void jxl_machine_init(MachineClass *mc)
+static bool jxl_get_secure(Object *obj, Error **errp)
+{
+    return JXL_MACHINE(obj)->secure;
+}
+
+static void jxl_set_secure(Object *obj, bool value, Error **errp)
+{
+    JXL_MACHINE(obj)->secure = value;
+}
+
+static void jxl_machine_class_init(ObjectClass *oc, const void *data)
 {
     static const char * const valid_cpu_types[] = {
         ARM_CPU_TYPE_NAME("cortex-a53"),
         ARM_CPU_TYPE_NAME("cortex-a57"),
         NULL
     };
+    MachineClass *mc = MACHINE_CLASS(oc);
 
     mc->desc = "JXL minimal ARM64 SPL-learning board";
     mc->init = jxl_init;
@@ -177,6 +195,26 @@ static void jxl_machine_init(MachineClass *mc)
     mc->default_cpus = JXL_DEFAULT_CPUS;
     mc->default_ram_size = JXL_DRAM_DEFAULT;
     mc->default_ram_id = "jxl.dram";
+
+    object_class_property_add_bool(oc, "secure",
+                                   jxl_get_secure, jxl_set_secure);
+    object_class_property_set_description(oc, "secure",
+        "Set on to build the CPU with EL3. Required for SPL+BL31 chains "
+        "(jxl-xen-atf, jxl-optee, jxl-xen-optee). Leave off for plain SPL "
+        "or kernel-direct chains so QEMU's PSCI emulation handles SMC.");
 }
 
-DEFINE_MACHINE_AARCH64("jxl", jxl_machine_init)
+static const TypeInfo jxl_machine_typeinfo = {
+    .name          = TYPE_JXL_MACHINE,
+    .parent        = TYPE_MACHINE,
+    .class_init    = jxl_machine_class_init,
+    .instance_size = sizeof(JXLMachineState),
+    .interfaces    = aarch64_machine_interfaces,
+};
+
+static void jxl_machine_register_types(void)
+{
+    type_register_static(&jxl_machine_typeinfo);
+}
+
+type_init(jxl_machine_register_types)

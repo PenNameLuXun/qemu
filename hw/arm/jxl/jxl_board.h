@@ -19,10 +19,27 @@
 #define HW_ARM_JXL_BOARD_H
 
 #include "hw/block/flash.h"
+#include "hw/boards.h"
 #include "hw/sd/sd.h"
+#include "qom/object.h"
 #include "system/memory.h"
 
 typedef struct JXLSocState JXLSocState;
+
+/*
+ * JXL machine subclass: carries a `secure` machine option that controls
+ * whether the CPU is built with EL3. The default (off) keeps the EL2-only
+ * boot chains (jxl, jxl-linux, jxl-linux-spl, jxl-xen) working with QEMU's
+ * built-in PSCI emulation. The BL31-using chains (jxl-xen-atf, jxl-optee,
+ * jxl-xen-optee) flip secure=on so EL3 exists for TF-A to live in.
+ */
+#define TYPE_JXL_MACHINE MACHINE_TYPE_NAME("jxl")
+OBJECT_DECLARE_SIMPLE_TYPE(JXLMachineState, JXL_MACHINE)
+
+struct JXLMachineState {
+    MachineState parent_obj;
+    bool secure;
+};
 
 #define JXL_MAX_CPUS     4
 #define JXL_DEFAULT_CPUS 4
