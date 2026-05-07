@@ -92,6 +92,11 @@ const JXLSocIpInfo jxl_soc_ip_info[JXL_SOC_IP_COUNT] = {
         .size = 0x1000,
         .name = "cpu-pwrctl",
     },
+    [JXL_SOC_IP_VIRTIO_MMIO] = {
+        .base_addr = 0x0a020000,
+        .size = 0x1000,
+        .name = "virtio-mmio",
+    },
 };
 
 static void jxl_soc_init(Object *obj)
@@ -239,6 +244,17 @@ static void jxl_soc_realize(DeviceState *dev, Error **errp)
                     jxl_soc_ip_info[JXL_SOC_IP_UART0].base_addr);
     sysbus_connect_irq(SYS_BUS_DEVICE(&soc->uart0), 0,
                        qdev_get_gpio_in(DEVICE(&soc->gic), JXL_SOC_IRQ_UART0));
+
+    /*
+     * One virtio-mmio transport. The guest binds whatever -device
+     * virtio-<foo>-device,... is attached on the command line (typically
+     * virtio-net-device for SLIRP networking). With no attached device the
+     * region simply reports an empty virtio header and is harmless.
+     */
+    sysbus_create_simple("virtio-mmio",
+                         jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_MMIO].base_addr,
+                         qdev_get_gpio_in(DEVICE(&soc->gic),
+                                          JXL_SOC_IRQ_VIRTIO_MMIO));
 }
 
 static void jxl_soc_class_init(ObjectClass *oc, const void *data)

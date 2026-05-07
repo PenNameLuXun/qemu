@@ -25,6 +25,10 @@
  *   0x0a010000 +---------------+  CPU power controller (4 KiB)
  *              |   CPU_PWR     |  EL3 firmware wakes powered-off CPUs here
  *   0x0a011000 +---------------+
+ *              |               |
+ *   0x0a020000 +---------------+  virtio-mmio transport (4 KiB)
+ *              |  VIRTIO_MMIO  |  attach with -device virtio-net-device,...
+ *   0x0a021000 +---------------+
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -49,6 +53,7 @@ typedef enum JXLSocIrq {
     JXL_SOC_IRQ_UART0 = 32,
     JXL_SOC_IRQ_MMCI_CMD,
     JXL_SOC_IRQ_MMCI_DATA,
+    JXL_SOC_IRQ_VIRTIO_MMIO,
     JXL_SOC_NUM_IRQS = 64,
 } JXLSocIrq;
 
@@ -59,6 +64,7 @@ typedef enum JXLSocIpIndex {
     JXL_SOC_IP_UART0,
     JXL_SOC_IP_MMCI,
     JXL_SOC_IP_CPU_PWRCTL,
+    JXL_SOC_IP_VIRTIO_MMIO,
     JXL_SOC_IP_COUNT,
 } JXLSocIpIndex;
 
@@ -95,5 +101,7 @@ struct JXLSocState {
 #define JXL_MMCI_SIZE       (jxl_soc_ip_info[JXL_SOC_IP_MMCI].size)
 #define JXL_CPU_PWRCTL_BASE (jxl_soc_ip_info[JXL_SOC_IP_CPU_PWRCTL].base_addr)
 #define JXL_CPU_PWRCTL_SIZE (jxl_soc_ip_info[JXL_SOC_IP_CPU_PWRCTL].size)
+#define JXL_VIRTIO_MMIO_BASE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_MMIO].base_addr)
+#define JXL_VIRTIO_MMIO_SIZE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_MMIO].size)
 
 #endif /* HW_ARM_JXL_SOC_H */
