@@ -295,10 +295,19 @@ static void pl110_update_display(void *opaque)
                                           s->rows, src_width);
     }
 
+    /*
+     * Always force a full re-render. Linux's pl111 driver maps the framebuffer
+     * with dma_alloc_wc(), i.e. non-cacheable / write-combining attributes;
+     * TCG's dirty-page logging does not reliably catch guest stores through
+     * such mappings, so dirty-row optimisation would leave most updates
+     * invisible. Re-reading the whole 800x600x4 = 1.9MB buffer every tick is
+     * cheap (~115 MB/s at 60 Hz) and produces correct output regardless of
+     * caching attributes.
+     */
     framebuffer_update_display(surface, &s->fbsection,
                                s->cols, s->rows,
                                src_width, s->cols * 4, 0,
-                               s->invalidate,
+                               1,
                                fn, s->palette,
                                &first, &last);
 
@@ -443,9 +452,6 @@ static void pl110_write(void *opaque, hwaddr offset,
     PL110State *s = (PL110State *)opaque;
     int n;
 
-    /* For simplicity invalidate the display whenever a control register
-       is written to.  */
-    s->invalidate = 1;
     if (offset >= 0x200 && offset < 0x400) {
         /* Palette.  */
         n = (offset - 0x200) >> 2;
@@ -458,11 +464,13 @@ static void pl110_write(void *opaque, hwaddr offset,
         s->timing[0] = val;
         n = ((val & 0xfc) + 4) * 4;
         pl110_resize(s, n, s->rows);
+        s->invalidate = 1;
         break;
     case 1: /* LCDTiming1 */
         s->timing[1] = val;
         n = (val & 0x3ff) + 1;
         pl110_resize(s, s->cols, n);
+        s->invalidate = 1;
         break;
     case 2: /* LCDTiming2 */
         s->timing[2] = val;
@@ -472,6 +480,7 @@ static void pl110_write(void *opaque, hwaddr offset,
         break;
     case 4: /* LCDUPBASE */
         s->upbase = val;
+        s->invalidate = 1;
         break;
     case 5: /* LCDLPBASE */
         s->lpbase = val;
@@ -491,6 +500,7 @@ static void pl110_write(void *opaque, hwaddr offset,
     control:
         s->cr = val;
         s->bpp = (val >> 1) & 7;
+        s->invalidate = 1;
         if (pl110_enabled(s)) {
             qemu_console_resize(s->con, s->cols, s->rows);
             timer_mod(s->vblank_timer,

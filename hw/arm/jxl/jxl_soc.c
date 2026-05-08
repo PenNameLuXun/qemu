@@ -97,6 +97,11 @@ const JXLSocIpInfo jxl_soc_ip_info[JXL_SOC_IP_COUNT] = {
         .size = 0x1000,
         .name = "virtio-mmio",
     },
+    [JXL_SOC_IP_CLCD] = {
+        .base_addr = 0x0a030000,
+        .size = 0x1000,
+        .name = "clcd",
+    },
 };
 
 static void jxl_soc_init(Object *obj)
@@ -255,6 +260,28 @@ static void jxl_soc_realize(DeviceState *dev, Error **errp)
                          jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_MMIO].base_addr,
                          qdev_get_gpio_in(DEVICE(&soc->gic),
                                           JXL_SOC_IRQ_VIRTIO_MMIO));
+
+    /*
+     * PL111 LCD controller. The guest's DRM driver (drivers/gpu/drm/pl111)
+     * tells QEMU the framebuffer base/format/dimensions; QEMU's pl111
+     * model then renders that buffer into whatever -display backend was
+     * selected (sdl, vnc, ...). With -display none the device exists but
+     * draws nowhere, which is fine for headless boots. The model wants an
+     * explicit `framebuffer-memory` link before realize so it knows which
+     * AddressSpace the framebuffer DMA addresses live in.
+     */
+    {
+        DeviceState *clcd = qdev_new("pl111");
+        SysBusDevice *clcd_sbd = SYS_BUS_DEVICE(clcd);
+        object_property_set_link(OBJECT(clcd), "framebuffer-memory",
+                                 OBJECT(sysmem), &error_fatal);
+        sysbus_realize_and_unref(clcd_sbd, &error_fatal);
+        sysbus_mmio_map(clcd_sbd, 0,
+                        jxl_soc_ip_info[JXL_SOC_IP_CLCD].base_addr);
+        sysbus_connect_irq(clcd_sbd, 0,
+                           qdev_get_gpio_in(DEVICE(&soc->gic),
+                                            JXL_SOC_IRQ_CLCD));
+    }
 }
 
 static void jxl_soc_class_init(ObjectClass *oc, const void *data)

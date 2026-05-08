@@ -29,6 +29,10 @@
  *   0x0a020000 +---------------+  virtio-mmio transport (4 KiB)
  *              |  VIRTIO_MMIO  |  attach with -device virtio-net-device,...
  *   0x0a021000 +---------------+
+ *              |               |
+ *   0x0a030000 +---------------+  PL111 LCD controller (4 KiB)
+ *              |     CLCD      |  framebuffer DMA → host display window
+ *   0x0a031000 +---------------+
  *
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
@@ -54,6 +58,7 @@ typedef enum JXLSocIrq {
     JXL_SOC_IRQ_MMCI_CMD,
     JXL_SOC_IRQ_MMCI_DATA,
     JXL_SOC_IRQ_VIRTIO_MMIO,
+    JXL_SOC_IRQ_CLCD,
     JXL_SOC_NUM_IRQS = 64,
 } JXLSocIrq;
 
@@ -65,6 +70,7 @@ typedef enum JXLSocIpIndex {
     JXL_SOC_IP_MMCI,
     JXL_SOC_IP_CPU_PWRCTL,
     JXL_SOC_IP_VIRTIO_MMIO,
+    JXL_SOC_IP_CLCD,
     JXL_SOC_IP_COUNT,
 } JXLSocIpIndex;
 
@@ -103,5 +109,7 @@ struct JXLSocState {
 #define JXL_CPU_PWRCTL_SIZE (jxl_soc_ip_info[JXL_SOC_IP_CPU_PWRCTL].size)
 #define JXL_VIRTIO_MMIO_BASE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_MMIO].base_addr)
 #define JXL_VIRTIO_MMIO_SIZE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_MMIO].size)
+#define JXL_CLCD_BASE        (jxl_soc_ip_info[JXL_SOC_IP_CLCD].base_addr)
+#define JXL_CLCD_SIZE        (jxl_soc_ip_info[JXL_SOC_IP_CLCD].size)
 
 #endif /* HW_ARM_JXL_SOC_H */
