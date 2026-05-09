@@ -97,6 +97,11 @@ const JXLSocIpInfo jxl_soc_ip_info[JXL_SOC_IP_COUNT] = {
         .size = 0x1000,
         .name = "virtio-mmio",
     },
+    [JXL_SOC_IP_VIRTIO_GPU_MMIO] = {
+        .base_addr = 0x0a021000,
+        .size = 0x1000,
+        .name = "virtio-gpu-mmio",
+    },
     [JXL_SOC_IP_CLCD] = {
         .base_addr = 0x0a030000,
         .size = 0x1000,
@@ -251,15 +256,32 @@ static void jxl_soc_realize(DeviceState *dev, Error **errp)
                        qdev_get_gpio_in(DEVICE(&soc->gic), JXL_SOC_IRQ_UART0));
 
     /*
-     * One virtio-mmio transport. The guest binds whatever -device
-     * virtio-<foo>-device,... is attached on the command line (typically
-     * virtio-net-device for SLIRP networking). With no attached device the
-     * region simply reports an empty virtio header and is harmless.
+     * Two virtio-mmio transports. The first is used by the default
+     * virtio-net-device. The second is reserved for virtio-gpu-device so the
+     * guest can expose a DRM/KMS display path alongside the simple PL111
+     * framebuffer.
      */
     sysbus_create_simple("virtio-mmio",
                          jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_MMIO].base_addr,
                          qdev_get_gpio_in(DEVICE(&soc->gic),
                                           JXL_SOC_IRQ_VIRTIO_MMIO));
+    {
+        DeviceState *gpu_virtio = qdev_new("virtio-mmio");
+        SysBusDevice *gpu_virtio_sbd = SYS_BUS_DEVICE(gpu_virtio);
+
+        /*
+         * The Linux virtio-gpu DRM driver requires VIRTIO_F_VERSION_1, so
+         * expose this transport in modern virtio-mmio mode. Keep the first
+         * transport legacy for the existing virtio-net path.
+         */
+        qdev_prop_set_bit(gpu_virtio, "force-legacy", false);
+        sysbus_realize_and_unref(gpu_virtio_sbd, &error_fatal);
+        sysbus_mmio_map(gpu_virtio_sbd, 0,
+                        jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_GPU_MMIO].base_addr);
+        sysbus_connect_irq(gpu_virtio_sbd, 0,
+                           qdev_get_gpio_in(DEVICE(&soc->gic),
+                                            JXL_SOC_IRQ_VIRTIO_GPU_MMIO));
+    }
 
     /*
      * PL111 LCD controller. The guest's DRM driver (drivers/gpu/drm/pl111)
