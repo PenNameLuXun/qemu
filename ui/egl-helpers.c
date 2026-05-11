@@ -29,6 +29,7 @@ EGLDisplay *qemu_egl_display;
 EGLConfig qemu_egl_config;
 DisplayGLMode qemu_egl_mode;
 bool qemu_egl_angle_d3d;
+bool qemu_egl_use_compat;
 
 /* ------------------------------------------------------------------ */
 
@@ -620,6 +621,156 @@ int qemu_egl_init_dpy_mesa(EGLNativeDisplayType dpy, DisplayGLMode mode)
 }
 #endif
 
+/*
+ * EGL_PLATFORM_DEVICE_EXT path. Used on WSL2/WSLg where dxgkrnl exposes a
+ * Direct3D-12 GPU via /dev/dxg but does not provide a DRM render node — the
+ * /dev/dri/cardN nodes are vgem virtual devices, so existing gbm/rendernode
+ * path falls through to swrast. By enumerating EGL devices and binding to
+ * one directly we let mesa take its WSL fallback chain and end up on
+ * d3d12_dri.so + dxcore (compatibility profile), which is what virglrenderer
+ * actually needs.
+ */
+int qemu_egl_init_dpy_device(int devidx, DisplayGLMode mode)
+{
+    /*
+     * The dxcore-backed device advertises PBUFFER configs but not WINDOW
+     * configs (there is no native window system on the device platform),
+     * so request PBUFFER. egl-headless uses surfaceless contexts and never
+     * actually binds this surface, but eglChooseConfig still needs a valid
+     * SURFACE_TYPE bit.
+     */
+    static const EGLint conf_att_core[] = {
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
+        EGL_RED_SIZE,   8,
+        EGL_GREEN_SIZE, 8,
+        EGL_BLUE_SIZE,  8,
+        EGL_ALPHA_SIZE, 0,
+        EGL_NONE,
+    };
+    static const EGLint conf_att_gles[] = {
+        EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_RED_SIZE,   8,
+        EGL_GREEN_SIZE, 8,
+        EGL_BLUE_SIZE,  8,
+        EGL_ALPHA_SIZE, 0,
+        EGL_NONE,
+    };
+    PFNEGLQUERYDEVICESEXTPROC qdev;
+    PFNEGLGETPLATFORMDISPLAYEXTPROC getpd;
+    EGLDeviceEXT devs[16];
+    EGLint num_devs = 0, major, minor, n;
+    EGLBoolean b;
+    bool gles = (mode == DISPLAY_GL_MODE_ES);
+
+    if (!epoxy_has_egl_extension(NULL, "EGL_EXT_device_base") &&
+        !epoxy_has_egl_extension(NULL, "EGL_EXT_device_enumeration")) {
+        error_report("egl: EGL_EXT_device_base/enumeration not supported");
+        return -1;
+    }
+
+    qdev = (PFNEGLQUERYDEVICESEXTPROC)eglGetProcAddress("eglQueryDevicesEXT");
+    getpd = (PFNEGLGETPLATFORMDISPLAYEXTPROC)
+        eglGetProcAddress("eglGetPlatformDisplayEXT");
+    if (!qdev || !getpd) {
+        error_report("egl: eglQueryDevicesEXT/eglGetPlatformDisplayEXT missing");
+        return -1;
+    }
+    if (!qdev(ARRAY_SIZE(devs), devs, &num_devs) || num_devs < 1) {
+        error_report("egl: eglQueryDevicesEXT returned no devices");
+        return -1;
+    }
+    if (devidx < 0 || devidx >= num_devs) {
+        error_report("egl: device index %d out of range (0..%d)",
+                     devidx, num_devs - 1);
+        return -1;
+    }
+
+    qemu_egl_display = getpd(EGL_PLATFORM_DEVICE_EXT, devs[devidx], NULL);
+    if (qemu_egl_display == EGL_NO_DISPLAY) {
+        error_report("egl: eglGetPlatformDisplay(EGL_PLATFORM_DEVICE_EXT) "
+                     "failed: %s", qemu_egl_get_error_string());
+        return -1;
+    }
+    if (!eglInitialize(qemu_egl_display, &major, &minor)) {
+        error_report("egl: eglInitialize failed: %s",
+                     qemu_egl_get_error_string());
+        return -1;
+    }
+    if (!eglBindAPI(gles ? EGL_OPENGL_ES_API : EGL_OPENGL_API)) {
+        error_report("egl: eglBindAPI failed (%s): %s",
+                     gles ? "gles" : "core", qemu_egl_get_error_string());
+        return -1;
+    }
+    b = eglChooseConfig(qemu_egl_display,
+                        gles ? conf_att_gles : conf_att_core,
+                        &qemu_egl_config, 1, &n);
+    if (!b || n != 1) {
+        error_report("egl: eglChooseConfig failed (%s): %s",
+                     gles ? "gles" : "core", qemu_egl_get_error_string());
+        return -1;
+    }
+    qemu_egl_mode = gles ? DISPLAY_GL_MODE_ES : DISPLAY_GL_MODE_CORE;
+    return 0;
+}
+
+#ifdef CONFIG_GBM
+int egl_dxcore_init(int devidx, DisplayGLMode mode)
+{
+    /*
+     * Request a COMPATIBILITY profile context. virglrenderer's vrend code
+     * uses legacy GL enums (e.g. glEnable(GL_TEXTURE_2D)) that are illegal
+     * in core profile. qemu_egl_init_ctx() forces core, so on the WSL EGL
+     * device path mesa picks the first driver that can hand out a core 4.1
+     * context -- which is kms_swrast (CPU). With compat requested, mesa
+     * skips kms_swrast and lands on d3d12_dri.so + dxcore = real GPU.
+     */
+    static const EGLint ctx_att_compat[] = {
+        EGL_CONTEXT_OPENGL_PROFILE_MASK,
+        EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT,
+        EGL_NONE
+    };
+    static const EGLint ctx_att_gles[] = {
+        EGL_CONTEXT_CLIENT_VERSION, 2,
+        EGL_NONE
+    };
+    bool gles = (mode == DISPLAY_GL_MODE_ES);
+
+    if (qemu_egl_init_dpy_device(devidx, mode) < 0) {
+        return -1;
+    }
+
+    if (!epoxy_has_egl_extension(qemu_egl_display,
+                                 "EGL_KHR_surfaceless_context")) {
+        error_report("egl: EGL_KHR_surfaceless_context not supported");
+        return -1;
+    }
+
+    qemu_egl_rn_ctx = eglCreateContext(qemu_egl_display, qemu_egl_config,
+                                       EGL_NO_CONTEXT,
+                                       gles ? ctx_att_gles : ctx_att_compat);
+    if (qemu_egl_rn_ctx == EGL_NO_CONTEXT) {
+        error_report("egl: eglCreateContext(compat) failed: %s",
+                     qemu_egl_get_error_string());
+        return -1;
+    }
+    if (!eglMakeCurrent(qemu_egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE,
+                        qemu_egl_rn_ctx)) {
+        error_report("egl: eglMakeCurrent failed: %s",
+                     qemu_egl_get_error_string());
+        return -1;
+    }
+    qemu_egl_use_compat = true;
+    info_report("egl: dxcore device %d -> %s / %s / %s",
+                devidx,
+                glGetString(GL_VENDOR)   ?: (const GLubyte *)"?",
+                glGetString(GL_RENDERER) ?: (const GLubyte *)"?",
+                glGetString(GL_VERSION)  ?: (const GLubyte *)"?");
+    return 0;
+}
+#endif
+
 
 #ifdef WIN32
 int qemu_egl_init_dpy_win32(EGLNativeDisplayType dpy, DisplayGLMode mode)
@@ -719,7 +870,28 @@ bool egl_init(const char *rendernode, DisplayGLMode mode, Error **errp)
         return false;
     }
 #elif defined(CONFIG_GBM)
-    if (egl_rendernode_init(rendernode, mode) < 0) {
+    /*
+     * "dxcore" / "dxcore:N" routes to the EGL_PLATFORM_DEVICE_EXT path for
+     * WSL2/WSLg, where /dev/dri/cardN is vgem and the real GPU sits behind
+     * /dev/dxg + libdxcore. mesa's d3d12 driver loads via that path and
+     * gives a GL 4.1 compatibility profile, which is what virglrenderer
+     * actually needs (the swrast core profile fallback breaks vrend on
+     * legacy enums like glEnable(GL_TEXTURE_2D)).
+     */
+    if (rendernode && g_str_has_prefix(rendernode, "dxcore")) {
+        int devidx = 0;
+        if (rendernode[6] == ':') {
+            devidx = atoi(rendernode + 7);
+        } else if (rendernode[6] != '\0') {
+            error_setg(errp, "egl: malformed rendernode '%s', "
+                       "expected 'dxcore' or 'dxcore:N'", rendernode);
+            return false;
+        }
+        if (egl_dxcore_init(devidx, mode) < 0) {
+            error_setg(errp, "egl: dxcore init failed");
+            return false;
+        }
+    } else if (egl_rendernode_init(rendernode, mode) < 0) {
         error_setg(errp, "egl: render node init failed");
         return false;
     }

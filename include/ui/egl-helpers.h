@@ -13,6 +13,12 @@ extern EGLDisplay *qemu_egl_display;
 extern EGLConfig qemu_egl_config;
 extern DisplayGLMode qemu_egl_mode;
 extern bool qemu_egl_angle_d3d;
+/*
+ * Set when egl_dxcore_init() succeeded -- callers (virtio-gpu-virgl) use this
+ * to request a COMPAT profile from virglrenderer so mesa can land on
+ * d3d12_dri.so rather than kms_swrast.
+ */
+extern bool qemu_egl_use_compat;
 
 typedef struct egl_fb {
     int width;
@@ -48,6 +54,7 @@ extern int qemu_egl_rn_fd;
 extern struct gbm_device *qemu_egl_rn_gbm_dev;
 
 int egl_rendernode_init(const char *rendernode, DisplayGLMode mode);
+int egl_dxcore_init(int devidx, DisplayGLMode mode);
 bool egl_dmabuf_export_texture(uint32_t tex_id, int *fd, EGLint *offset,
                                EGLint *stride, EGLint *fourcc, int *num_planes,
                                EGLuint64KHR *modifier);
@@ -67,6 +74,8 @@ int qemu_egl_init_dpy_x11(EGLNativeDisplayType dpy, DisplayGLMode mode);
 int qemu_egl_init_dpy_mesa(EGLNativeDisplayType dpy, DisplayGLMode mode);
 
 #endif
+
+int qemu_egl_init_dpy_device(int devidx, DisplayGLMode mode);
 
 #ifdef WIN32
 int qemu_egl_init_dpy_win32(EGLNativeDisplayType dpy, DisplayGLMode mode);

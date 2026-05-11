@@ -1,13 +1,24 @@
 #include "qemu/osdep.h"
 #include "qemu/error-report.h"
 #include "ui/egl-context.h"
+#include "ui/egl-helpers.h"
 
 QEMUGLContext qemu_egl_create_context(DisplayGLCtx *dgc,
                                       QEMUGLParams *params)
 {
    EGLContext ctx;
+   /*
+    * qemu_egl_use_compat is set by egl_dxcore_init() to signal we're on a
+    * host EGL display where mesa needs a COMPATIBILITY profile request to
+    * reach the real driver (d3d12 on WSL2). The hard-coded core profile bit
+    * below otherwise locks every virglrenderer-requested context onto the
+    * driver that can serve core 4.x, which on this host is kms_swrast (CPU).
+    */
+   EGLint profile_bit = qemu_egl_use_compat
+       ? EGL_CONTEXT_OPENGL_COMPATIBILITY_PROFILE_BIT
+       : EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT;
    EGLint ctx_att_core[] = {
-       EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+       EGL_CONTEXT_OPENGL_PROFILE_MASK, profile_bit,
        EGL_CONTEXT_CLIENT_VERSION, params->major_ver,
        EGL_CONTEXT_MINOR_VERSION_KHR, params->minor_ver,
        EGL_NONE

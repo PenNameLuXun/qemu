@@ -33,6 +33,7 @@
 #include "system/runstate-action.h"
 #include "system/system.h"
 #include "qemu/log.h"
+#include "qemu/error-report.h"
 #include "qemu-main.h"
 
 static int sdl2_num_outputs;
@@ -79,9 +80,12 @@ static struct sdl2_console *get_scon_from_window(uint32_t window_id)
 void sdl2_window_create(struct sdl2_console *scon)
 {
     int flags = 0;
+    int width = 640;
+    int height = 480;
 
-    if (!scon->surface) {
-        return;
+    if (scon->surface) {
+        width = surface_width(scon->surface);
+        height = surface_height(scon->surface);
     }
     assert(!scon->real_window);
 
@@ -101,9 +105,12 @@ void sdl2_window_create(struct sdl2_console *scon)
 
     scon->real_window = SDL_CreateWindow("", SDL_WINDOWPOS_UNDEFINED,
                                          SDL_WINDOWPOS_UNDEFINED,
-                                         surface_width(scon->surface),
-                                         surface_height(scon->surface),
+                                         width, height,
                                          flags);
+    if (!scon->real_window) {
+        error_report("sdl2: failed to create window: %s", SDL_GetError());
+        return;
+    }
     if (scon->opengl) {
         const char *driver = "opengl";
 
@@ -115,6 +122,10 @@ void sdl2_window_create(struct sdl2_console *scon)
         SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");
 
         scon->winctx = SDL_GL_CreateContext(scon->real_window);
+        if (!scon->winctx) {
+            error_report("sdl2: failed to create window GL context: %s",
+                         SDL_GetError());
+        }
         SDL_GL_SetSwapInterval(0);
     } else {
         /* The SDL renderer is only used by sdl2-2D, when OpenGL is disabled */

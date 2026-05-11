@@ -1186,6 +1186,21 @@ int virtio_gpu_virgl_init(VirtIOGPU *g)
     }
 #endif
 
+    /*
+     * When the host EGL display came from egl_dxcore_init (WSL2 dxcore),
+     * ask virglrenderer for a COMPAT profile context so mesa lands on
+     * d3d12_dri.so. With the default core profile request mesa stops at
+     * kms_swrast on the same EGL_PLATFORM_DEVICE_EXT device, which is
+     * pure CPU rendering. The system virglrenderer header (0.9.1) lacks
+     * this define; the runtime is 1.1.1 and accepts bit 13.
+     */
+#ifndef VIRGL_RENDERER_COMPAT_PROFILE
+#define VIRGL_RENDERER_COMPAT_PROFILE (1 << 13)
+#endif
+    if (qemu_egl_use_compat) {
+        flags |= VIRGL_RENDERER_COMPAT_PROFILE;
+    }
+
     ret = virgl_renderer_init(g, flags, &virtio_gpu_3d_cbs);
     if (ret != 0) {
         error_report("virgl could not be initialized: %d", ret);

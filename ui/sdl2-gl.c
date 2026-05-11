@@ -30,6 +30,30 @@
 #include "ui/input.h"
 #include "ui/sdl2.h"
 
+static bool sdl2_gl_make_window_context_current(struct sdl2_console *scon)
+{
+    if (!scon->real_window) {
+        sdl2_window_create(scon);
+    }
+    if (!scon->real_window || !scon->winctx) {
+        return false;
+    }
+
+    return SDL_GL_MakeCurrent(scon->real_window, scon->winctx) == 0;
+}
+
+static bool sdl2_gl_make_window_context_current_with_shader(
+    struct sdl2_console *scon)
+{
+    if (!sdl2_gl_make_window_context_current(scon)) {
+        return false;
+    }
+    if (!scon->gls) {
+        scon->gls = qemu_gl_init_shader();
+    }
+    return scon->gls != NULL;
+}
+
 static void sdl2_set_scanout_mode(struct sdl2_console *scon, bool scanout)
 {
     if (scon->scanout_mode == scanout) {
@@ -50,7 +74,9 @@ static void sdl2_gl_render_surface(struct sdl2_console *scon)
 {
     int ww, wh;
 
-    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+    if (!sdl2_gl_make_window_context_current_with_shader(scon)) {
+        return;
+    }
     sdl2_set_scanout_mode(scon, false);
 
     SDL_GetWindowSize(scon->real_window, &ww, &wh);
@@ -67,11 +93,9 @@ void sdl2_gl_update(DisplayChangeListener *dcl,
 
     assert(scon->opengl);
 
-    if (!scon->real_window) {
+    if (!sdl2_gl_make_window_context_current_with_shader(scon)) {
         return;
     }
-
-    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
     surface_gl_update_texture(scon->gls, scon->surface, x, y, w, h);
     scon->updates++;
 }
@@ -84,7 +108,7 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
 
     assert(scon->opengl);
 
-    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+    sdl2_gl_make_window_context_current(scon);
     surface_gl_destroy_texture(scon->gls, scon->surface);
 
     scon->surface = new_surface;
@@ -96,10 +120,10 @@ void sdl2_gl_switch(DisplayChangeListener *dcl,
         return;
     }
 
-    if (!scon->real_window) {
-        sdl2_window_create(scon);
-        scon->gls = qemu_gl_init_shader();
-    } else if (old_surface &&
+    if (!sdl2_gl_make_window_context_current_with_shader(scon)) {
+        return;
+    }
+    if (old_surface &&
                ((surface_width(old_surface)  != surface_width(new_surface)) ||
                 (surface_height(old_surface) != surface_height(new_surface)))) {
         sdl2_window_resize(scon);
@@ -143,6 +167,10 @@ QEMUGLContext sdl2_gl_create_context(DisplayGLCtx *dgc,
     SDL_GLContext ctx;
 
     assert(scon->opengl);
+
+    if (!scon->real_window) {
+        sdl2_window_create(scon);
+    }
 
     SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
 
@@ -217,7 +245,9 @@ void sdl2_gl_scanout_texture(DisplayChangeListener *dcl,
     scon->h = h;
     scon->y0_top = backing_y_0_top;
 
-    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+    if (!sdl2_gl_make_window_context_current(scon)) {
+        return;
+    }
 
     sdl2_set_scanout_mode(scon, true);
     egl_fb_setup_for_tex(&scon->guest_fb, backing_width, backing_height,
@@ -238,7 +268,9 @@ void sdl2_gl_scanout_flush(DisplayChangeListener *dcl,
         return;
     }
 
-    SDL_GL_MakeCurrent(scon->real_window, scon->winctx);
+    if (!sdl2_gl_make_window_context_current(scon)) {
+        return;
+    }
 
     SDL_GetWindowSize(scon->real_window, &ww, &wh);
     egl_fb_setup_default(&scon->win_fb, ww, wh, 0, 0);
