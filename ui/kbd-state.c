@@ -103,6 +103,12 @@ void qkbd_state_key_event(QKbdState *kbd, QKeyCode qcode, bool down)
         if (kbd->key_delay_ms) {
             qemu_input_event_send_key_delay(kbd->key_delay_ms);
         }
+    } else {
+        fprintf(stderr, "JXL-DBG: qkbd_state_key_event DROPPED: "
+                "kbd->con=%p is_graphic=%d qcode=%d down=%d\n",
+                (void *)kbd->con,
+                kbd->con ? qemu_console_is_graphic(kbd->con) : 0,
+                (int)qcode, (int)down);
     }
 }
 

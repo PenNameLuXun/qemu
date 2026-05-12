@@ -102,6 +102,16 @@ const JXLSocIpInfo jxl_soc_ip_info[JXL_SOC_IP_COUNT] = {
         .size = 0x1000,
         .name = "virtio-gpu-mmio",
     },
+    [JXL_SOC_IP_VIRTIO_KBD_MMIO] = {
+        .base_addr = 0x0a022000,
+        .size = 0x1000,
+        .name = "virtio-kbd-mmio",
+    },
+    [JXL_SOC_IP_VIRTIO_TABLET_MMIO] = {
+        .base_addr = 0x0a023000,
+        .size = 0x1000,
+        .name = "virtio-tablet-mmio",
+    },
     [JXL_SOC_IP_CLCD] = {
         .base_addr = 0x0a030000,
         .size = 0x1000,
@@ -281,6 +291,38 @@ static void jxl_soc_realize(DeviceState *dev, Error **errp)
         sysbus_connect_irq(gpu_virtio_sbd, 0,
                            qdev_get_gpio_in(DEVICE(&soc->gic),
                                             JXL_SOC_IRQ_VIRTIO_GPU_MMIO));
+    }
+
+    /*
+     * Two more modern virtio-mmio transports reserved for virtio-input devices
+     * (keyboard + tablet). VNC delivers absolute pointer coordinates so a
+     * virtio-tablet is the right shape; relative-mouse would drift. The guest
+     * kernel's virtio_input driver registers each as a separate /dev/input/
+     * event node which Qt's eglfs evdev plugin then opens directly.
+     */
+    {
+        DeviceState *kbd_virtio = qdev_new("virtio-mmio");
+        SysBusDevice *kbd_virtio_sbd = SYS_BUS_DEVICE(kbd_virtio);
+
+        qdev_prop_set_bit(kbd_virtio, "force-legacy", false);
+        sysbus_realize_and_unref(kbd_virtio_sbd, &error_fatal);
+        sysbus_mmio_map(kbd_virtio_sbd, 0,
+                        jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_KBD_MMIO].base_addr);
+        sysbus_connect_irq(kbd_virtio_sbd, 0,
+                           qdev_get_gpio_in(DEVICE(&soc->gic),
+                                            JXL_SOC_IRQ_VIRTIO_KBD_MMIO));
+    }
+    {
+        DeviceState *tablet_virtio = qdev_new("virtio-mmio");
+        SysBusDevice *tablet_virtio_sbd = SYS_BUS_DEVICE(tablet_virtio);
+
+        qdev_prop_set_bit(tablet_virtio, "force-legacy", false);
+        sysbus_realize_and_unref(tablet_virtio_sbd, &error_fatal);
+        sysbus_mmio_map(tablet_virtio_sbd, 0,
+                        jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_TABLET_MMIO].base_addr);
+        sysbus_connect_irq(tablet_virtio_sbd, 0,
+                           qdev_get_gpio_in(DEVICE(&soc->gic),
+                                            JXL_SOC_IRQ_VIRTIO_TABLET_MMIO));
     }
 
     /*

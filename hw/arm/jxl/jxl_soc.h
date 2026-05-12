@@ -34,6 +34,14 @@
  *              | VIRTIO_GPU_MMIO| attach with -device virtio-gpu-device,...
  *   0x0a022000 +---------------+
  *              |               |
+ *   0x0a022000 +---------------+  virtio-mmio transport (4 KiB)
+ *              | VIRTIO_KBD_MMIO| attach with -device virtio-keyboard-device
+ *   0x0a023000 +---------------+
+ *              |               |
+ *   0x0a023000 +---------------+  virtio-mmio transport (4 KiB)
+ *              |VIRTIO_TABLET   | attach with -device virtio-tablet-device
+ *   0x0a024000 +---------------+
+ *              |               |
  *   0x0a030000 +---------------+  PL111 LCD controller (4 KiB)
  *              |     CLCD      |  framebuffer DMA → host display window
  *   0x0a031000 +---------------+
@@ -64,6 +72,8 @@ typedef enum JXLSocIrq {
     JXL_SOC_IRQ_VIRTIO_MMIO,
     JXL_SOC_IRQ_CLCD,
     JXL_SOC_IRQ_VIRTIO_GPU_MMIO,
+    JXL_SOC_IRQ_VIRTIO_KBD_MMIO,
+    JXL_SOC_IRQ_VIRTIO_TABLET_MMIO,
     JXL_SOC_NUM_IRQS = 64,
 } JXLSocIrq;
 
@@ -76,6 +86,8 @@ typedef enum JXLSocIpIndex {
     JXL_SOC_IP_CPU_PWRCTL,
     JXL_SOC_IP_VIRTIO_MMIO,
     JXL_SOC_IP_VIRTIO_GPU_MMIO,
+    JXL_SOC_IP_VIRTIO_KBD_MMIO,
+    JXL_SOC_IP_VIRTIO_TABLET_MMIO,
     JXL_SOC_IP_CLCD,
     JXL_SOC_IP_COUNT,
 } JXLSocIpIndex;
@@ -117,6 +129,10 @@ struct JXLSocState {
 #define JXL_VIRTIO_MMIO_SIZE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_MMIO].size)
 #define JXL_VIRTIO_GPU_MMIO_BASE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_GPU_MMIO].base_addr)
 #define JXL_VIRTIO_GPU_MMIO_SIZE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_GPU_MMIO].size)
+#define JXL_VIRTIO_KBD_MMIO_BASE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_KBD_MMIO].base_addr)
+#define JXL_VIRTIO_KBD_MMIO_SIZE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_KBD_MMIO].size)
+#define JXL_VIRTIO_TABLET_MMIO_BASE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_TABLET_MMIO].base_addr)
+#define JXL_VIRTIO_TABLET_MMIO_SIZE (jxl_soc_ip_info[JXL_SOC_IP_VIRTIO_TABLET_MMIO].size)
 #define JXL_CLCD_BASE        (jxl_soc_ip_info[JXL_SOC_IP_CLCD].base_addr)
 #define JXL_CLCD_SIZE        (jxl_soc_ip_info[JXL_SOC_IP_CLCD].size)
 

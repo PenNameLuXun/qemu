@@ -1861,9 +1861,20 @@ static void kbd_leds(void *opaque, int ledstate)
     }
 }
 
+static int jxl_kbd_dbg_count = 0;
 static void do_key_event(VncState *vs, int down, int keycode, int sym)
 {
     QKeyCode qcode = qemu_input_key_number_to_qcode(keycode);
+
+    if (down && jxl_kbd_dbg_count < 5) {
+        fprintf(stderr, "JXL-DBG: do_key_event: down=%d keycode=%d sym=0x%x "
+                "qcode=%d con=%p is_graphic=%d is_text=%d\n",
+                down, keycode, sym, (int)qcode,
+                (void *)vs->vd->dcl.con,
+                qemu_console_is_graphic(vs->vd->dcl.con),
+                QEMU_IS_TEXT_CONSOLE(vs->vd->dcl.con));
+        jxl_kbd_dbg_count++;
+    }
 
     /* QEMU console switch */
     switch (qcode) {
